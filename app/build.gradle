@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.arena.studynotes'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.arena.studynotes'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('RELEASE_STORE_FILE') ?: 'release-key.jks')
+            storePassword System.getenv('RELEASE_STORE_PASSWORD') ?: 'publicpass'
+            keyAlias System.getenv('RELEASE_KEY_ALIAS') ?: 'publickey'
+            keyPassword System.getenv('RELEASE_KEY_PASSWORD') ?: 'publicpass'
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            signingConfig signingConfigs.release
+            debuggable false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

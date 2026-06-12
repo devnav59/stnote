@@ -1,0 +1,90 @@
+name: Build signed release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'GitHub Release tag name, e.g. v1.0.0. Leave empty for auto tag.'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Create public release keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore app/release-key.jks \
+            -storepass publicpass \
+            -keypass publicpass \
+            -alias publickey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Public StudyNotes, OU=Open Build, O=Arena, L=Tehran, S=Tehran, C=IR"
+
+      - name: Build signed release APK
+        env:
+          RELEASE_STORE_FILE: release-key.jks
+          RELEASE_STORE_PASSWORD: publicpass
+          RELEASE_KEY_ALIAS: publickey
+          RELEASE_KEY_PASSWORD: publicpass
+        run: gradle --no-daemon --warning-mode none :app:assembleRelease
+
+      - name: Verify APK signature
+        run: |
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+
+      - name: Prepare release files and tag
+        id: prep
+        shell: bash
+        run: |
+          APK_NAME="StudyNotes-release-signed.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK_NAME"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            TAG="${{ github.event.inputs.release_tag }}"
+          else
+            TAG="v1.0.0-build-${GITHUB_RUN_NUMBER}"
+          fi
+          echo "apk=$APK_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StudyNotes-release-signed-apk
+          path: ${{ steps.prep.outputs.apk }}
+
+      - name: Publish APK in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prep.outputs.tag }}
+          name: StudyNotes ${{ steps.prep.outputs.tag }}
+          body: |
+            APK ریلیز امضاشده اپلیکیشن StudyNotes.
+
+            این فایل با keystore عمومی workflow امضا شده است. برای انتشار رسمی، keystore خصوصی خودتان را جایگزین کنید.
+          files: ${{ steps.prep.outputs.apk }}
+          draft: false
+          prerelease: false
